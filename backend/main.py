@@ -1,24 +1,35 @@
-from fastapi import FastAPI
-from backend.services import FraudDetector
+import json
+import os
+from functools import lru_cache
+from typing import Optional
 
-app = FastAPI()
-from pydantic import BaseModel
+from fastapi import Depends, FastAPI, HTTPException, Query
 
-class InputData(BaseModel):
-    consumption: float
-    voltage: float
+from backend.schemas import PredictionResponse, UsageInput
+from backend.services import FraudDetector, UnknownMeterError, to_records
+from model.config import METRICS_PATH
 
-@app.post("/predict")  
-def predict(data: InputData):
-    result = detector.predict_single(data.consumption, data.voltage)
+app = FastAPI(
+    title="Electricity Theft Detection API",
+    description="Unsupervised anomaly detection on smart-meter readings.",
+    version="2.0.0",
+)
 
-    return {
-        "consumption": data.consumption,
-        "voltage": data.voltage,
-        "prediction": result,
-        "is_fraud": result == -1
-    }
-detector = FraudDetector()
+
+@lru_cache(maxsize=1)
+def _load_detector():
+    return FraudDetector()
+
+
+def get_detector():
+    try:
+        return _load_detector()
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=503,
+            detail="Model not found. Run: python -m database.init_db && python -m model.train",
+        )
+
 
 @app.get("/")
 def home():
@@ -26,16 +37,43 @@ def home():
 
 
 @app.get("/detect")
-def detect():
-    df = detector.detect()
-    return df.to_dict(orient="records")
+def detect(
+    meter_id: Optional[str] = None,
+    limit: Optional[int] = Query(None, ge=1),
+    detector: FraudDetector = Depends(get_detector),
+):
+    """Every reading with its anomaly label (-1 = anomaly, 1 = normal) and score."""
+    return to_records(detector.detect(meter_id, limit))
+
 
 @app.get("/fraud-cases")
-def get_fraud_cases():
-    df = detector.detect()  # DataFrame
+def get_fraud_cases(
+    meter_id: Optional[str] = None,
+    limit: Optional[int] = Query(None, ge=1),
+    detector: FraudDetector = Depends(get_detector),
+):
+    """Only readings the model flags as anomalous (label -1), most suspicious first."""
+    return to_records(detector.fraud_cases(meter_id, limit))
 
-    data = df.to_dict(orient="records")  
 
-    frauds = [row for row in data if row.get("anomaly") == 1]
+@app.get("/meters")
+def meters(detector: FraudDetector = Depends(get_detector)):
+    """Per-meter reading counts and flag rates."""
+    return detector.meter_summary()
 
-    return frauds
+
+@app.post("/predict", response_model=PredictionResponse)
+def predict(data: UsageInput, detector: FraudDetector = Depends(get_detector)):
+    try:
+        return detector.predict_single(data.consumption, data.voltage, data.meter_id, data.timestamp)
+    except UnknownMeterError:
+        raise HTTPException(status_code=404, detail=f"Unknown meter_id: {data.meter_id}")
+
+
+@app.get("/metrics")
+def metrics():
+    """Hold-out evaluation results written by `python -m model.evaluate`."""
+    if not os.path.exists(METRICS_PATH):
+        raise HTTPException(status_code=404, detail="No metrics yet. Run: python -m model.evaluate")
+    with open(METRICS_PATH) as f:
+        return json.load(f)

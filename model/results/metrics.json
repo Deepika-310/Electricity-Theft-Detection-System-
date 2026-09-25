@@ -1,0 +1,283 @@
+{
+  "generated_at": "2026-09-23T20:38:35.443934+00:00",
+  "sklearn_version": "1.7.2",
+  "deployed_model": "Isolation Forest",
+  "config": {
+    "contamination": 0.05,
+    "train_fraction": 0.7,
+    "features": [
+      "log_seasonal_ratio",
+      "zscore"
+    ],
+    "zscore_threshold": 3.0
+  },
+  "dataset": {
+    "rows": 7200,
+    "meters": 10,
+    "train_rows": 5040,
+    "test_rows": 2160,
+    "split_time": "2026-08-21T23:18:00",
+    "test_theft_rate": 0.0394
+  },
+  "models": {
+    "Isolation Forest": {
+      "precision": 0.9411764705882353,
+      "recall": 0.5647058823529412,
+      "f1": 0.7058823529411765,
+      "roc_auc": 0.981516654854713,
+      "pr_auc": 0.7818786120082117,
+      "confusion": {
+        "tn": 2072,
+        "fp": 3,
+        "fn": 37,
+        "tp": 48
+      },
+      "fit_seconds": 0.185,
+      "predict_seconds": 0.038,
+      "recall_by_type": {
+        "abnormal_surge": 1.0,
+        "meter_bypass": 0.0,
+        "meter_stall": 1.0
+      }
+    },
+    "Local Outlier Factor": {
+      "precision": 0.1774193548387097,
+      "recall": 0.25882352941176473,
+      "f1": 0.21052631578947367,
+      "roc_auc": 0.6220382707299787,
+      "pr_auc": 0.10065826652765887,
+      "confusion": {
+        "tn": 1973,
+        "fp": 102,
+        "fn": 63,
+        "tp": 22
+      },
+      "fit_seconds": 0.024,
+      "predict_seconds": 0.018,
+      "recall_by_type": {
+        "abnormal_surge": 0.1,
+        "meter_bypass": 0.0,
+        "meter_stall": 0.5526
+      }
+    },
+    "One-Class SVM": {
+      "precision": 0.5116279069767442,
+      "recall": 0.5176470588235295,
+      "f1": 0.5146198830409356,
+      "roc_auc": 0.5687313961729271,
+      "pr_auc": 0.5237243980743195,
+      "confusion": {
+        "tn": 2033,
+        "fp": 42,
+        "fn": 41,
+        "tp": 44
+      },
+      "fit_seconds": 0.037,
+      "predict_seconds": 0.04,
+      "recall_by_type": {
+        "abnormal_surge": 1.0,
+        "meter_bypass": 0.027,
+        "meter_stall": 0.8684
+      }
+    },
+    "Elliptic Envelope": {
+      "precision": 0.703125,
+      "recall": 0.5294117647058824,
+      "f1": 0.6040268456375839,
+      "roc_auc": 0.972921332388377,
+      "pr_auc": 0.7060952040824809,
+      "confusion": {
+        "tn": 2056,
+        "fp": 19,
+        "fn": 40,
+        "tp": 45
+      },
+      "fit_seconds": 0.429,
+      "predict_seconds": 0.003,
+      "recall_by_type": {
+        "abnormal_surge": 0.1,
+        "meter_bypass": 0.1622,
+        "meter_stall": 1.0
+      }
+    },
+    "Z-score rule (baseline)": {
+      "precision": 0.31645569620253167,
+      "recall": 0.8823529411764706,
+      "f1": 0.4658385093167702,
+      "roc_auc": 0.9770375620127569,
+      "pr_auc": 0.7580636436362547,
+      "confusion": {
+        "tn": 1913,
+        "fp": 162,
+        "fn": 10,
+        "tp": 75
+      },
+      "fit_seconds": 0.0,
+      "predict_seconds": 0.0,
+      "recall_by_type": {
+        "abnormal_surge": 1.0,
+        "meter_bypass": 0.7297,
+        "meter_stall": 1.0
+      }
+    }
+  },
+  "contamination_sweep": [
+    {
+      "contamination": 0.01,
+      "precision": 1.0,
+      "recall": 0.27058823529411763,
+      "f1": 0.42592592592592593
+    },
+    {
+      "contamination": 0.02,
+      "precision": 1.0,
+      "recall": 0.5058823529411764,
+      "f1": 0.671875
+    },
+    {
+      "contamination": 0.05,
+      "precision": 0.9411764705882353,
+      "recall": 0.5647058823529412,
+      "f1": 0.7058823529411765
+    },
+    {
+      "contamination": 0.08,
+      "precision": 0.4921875,
+      "recall": 0.7411764705882353,
+      "f1": 0.5915492957746479
+    },
+    {
+      "contamination": 0.1,
+      "precision": 0.3684210526315789,
+      "recall": 0.9058823529411765,
+      "f1": 0.5238095238095238
+    },
+    {
+      "contamination": 0.15,
+      "precision": 0.22606382978723405,
+      "recall": 1.0,
+      "f1": 0.368763557483731
+    }
+  ],
+  "robustness": {
+    "seeds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "models": {
+      "Isolation Forest": {
+        "precision": {
+          "mean": 0.9056,
+          "std": 0.1059
+        },
+        "recall": {
+          "mean": 0.5201,
+          "std": 0.2592
+        },
+        "f1": {
+          "mean": 0.6092,
+          "std": 0.2333
+        },
+        "roc_auc": {
+          "mean": 0.9702,
+          "std": 0.0195
+        },
+        "pr_auc": {
+          "mean": 0.7924,
+          "std": 0.1121
+        }
+      },
+      "Local Outlier Factor": {
+        "precision": {
+          "mean": 0.2098,
+          "std": 0.1798
+        },
+        "recall": {
+          "mean": 0.2907,
+          "std": 0.3018
+        },
+        "f1": {
+          "mean": 0.2419,
+          "std": 0.2262
+        },
+        "roc_auc": {
+          "mean": 0.6016,
+          "std": 0.1836
+        },
+        "pr_auc": {
+          "mean": 0.2173,
+          "std": 0.241
+        }
+      },
+      "One-Class SVM": {
+        "precision": {
+          "mean": 0.4913,
+          "std": 0.1238
+        },
+        "recall": {
+          "mean": 0.5192,
+          "std": 0.2157
+        },
+        "f1": {
+          "mean": 0.4976,
+          "std": 0.1674
+        },
+        "roc_auc": {
+          "mean": 0.5963,
+          "std": 0.1944
+        },
+        "pr_auc": {
+          "mean": 0.4594,
+          "std": 0.2297
+        }
+      },
+      "Elliptic Envelope": {
+        "precision": {
+          "mean": 0.7032,
+          "std": 0.0849
+        },
+        "recall": {
+          "mean": 0.6203,
+          "std": 0.2308
+        },
+        "f1": {
+          "mean": 0.6275,
+          "std": 0.1444
+        },
+        "roc_auc": {
+          "mean": 0.9693,
+          "std": 0.0147
+        },
+        "pr_auc": {
+          "mean": 0.7838,
+          "std": 0.1263
+        }
+      },
+      "Z-score rule (baseline)": {
+        "precision": {
+          "mean": 0.4928,
+          "std": 0.0598
+        },
+        "recall": {
+          "mean": 0.7028,
+          "std": 0.1732
+        },
+        "f1": {
+          "mean": 0.5741,
+          "std": 0.0945
+        },
+        "roc_auc": {
+          "mean": 0.9239,
+          "std": 0.0633
+        },
+        "pr_auc": {
+          "mean": 0.6738,
+          "std": 0.1709
+        }
+      }
+    }
+  }
+}

@@ -1,197 +1,125 @@
-Electricity Theft Detection System
+# Electricity Theft Detection System
 
-Electricity theft is a major issue in power distribution systems, leading to financial losses and grid inefficiencies.
-This project is a full-stack AI system that detects abnormal electricity usage patterns using machine learning and provides real-time fraud detection through an API and dashboard.
+An end-to-end machine-learning system that flags suspicious electricity usage from smart-meter readings: a simulated data source, an unsupervised anomaly detector, a REST API, and an interactive dashboard, with a reproducible evaluation that compares several models against a non-ML baseline.
 
-The system combines:
+> **Scope note.** The data is simulated, so every result below describes this simulator, not real utility data. The simulator exists so that theft is *labelled*, which real utility data almost never is, and that makes honest measurement possible.
 
-Machine Learning (Anomaly Detection)
-Backend API (FastAPI)
-Database (SQL)
-Frontend Dashboard (Streamlit)
-Problem Statement
+## The problem
 
-Electricity consumption data often contains:
+Utilities lose revenue to meter tampering, bypassing and illegal connections. Confirmed theft labels are rare (theft is only confirmed by physical inspection), so a supervised classifier has nothing to train on. This project treats theft as **anomaly detection**: learn what a meter's normal behaviour looks like, and flag readings that deviate from it.
 
-sudden spikes in usage
-abnormal drops
-inconsistent voltage-consumption patterns
+## Architecture
 
-Manual monitoring is not scalable.
+```
+database/  SQLite + simulator (labelled theft episodes)
+   |
+model/     features -> candidate detectors -> time-based evaluation -> model.pkl
+   |
+backend/   FastAPI: /detect /fraud-cases /meters /predict /metrics
+   |
+frontend/  Streamlit dashboard (calls the API over HTTP)
+```
 
-This project automates detection of suspicious usage patterns in real time.
+## How detection works
 
-System Architecture
-SQL Database → FastAPI Backend → ML Model → Streamlit Dashboard
-Flow:
-Data is stored in SQL database
-Backend fetches data using FastAPI
-ML model analyzes consumption patterns
-API returns:
-full dataset
-fraud cases
-real-time prediction
-Streamlit visualizes results
- Tech Stack
- Backend
-FastAPI → API development
-Pydantic → request validation
-Uvicorn → server runtime
- Machine Learning
-Pandas → data processing
-Scikit-learn → Isolation Forest model
-NumPy → numerical computation
- Database
-SQLite (lightweight local SQL database)
-Stores electricity usage logs:
-meter_id
-timestamp
-voltage
-consumption
- Frontend
-Streamlit → interactive dashboard
-Requests → API communication
- Database Schema
-CREATE TABLE IF NOT EXISTS electricity_usage (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    meter_id TEXT NOT NULL,
-    timestamp DATETIME NOT NULL,
-    voltage REAL,
-    consumption REAL
-);
-This stores
-Each row represents electricity usage at a specific time for a meter.
+**Data.** `database/init_db.py` simulates 10 meters over 30 days of hourly readings (residential and commercial load shapes, weekday/weekend effects, noise). Theft episodes are injected into 40% of meters and labelled (`is_theft`, `theft_type`):
 
- Machine Learning Approach
-Model Used:
-Isolation Forest (Unsupervised Anomaly Detection)
-Why this model?
-No labeled fraud dataset required
-Detects unusual patterns automatically
-Works well for real-world anomaly detection problems
-Features used:
-consumption
-voltage
-spike-based derived patterns (rolling average, anomaly score)
-Output:
-1 → normal
--1 → anomaly (fraud suspected)
-🔌 Backend (FastAPI)
-Key Endpoints:
-1. Health Check
-GET /
-2. Full Data
-GET /detect
+| Type | Behaviour | Duration |
+|---|---|---|
+| `meter_bypass` | consumption recorded at 25-55% of normal | 24-72 h |
+| `meter_stall` | consumption near zero | 12-48 h |
+| `abnormal_surge` | consumption 2.5-4x normal | 2-6 h |
 
-Returns all electricity usage records with anomaly labels.
+Most theft is a *drop* in recorded usage, so a "big number = fraud" rule would miss it.
 
-3. Fraud Cases
-GET /fraud-cases
+**Features** (`model/features.py`). Every reading is compared with *that meter's own past*, using only earlier data (no leakage):
+- `seasonal_ratio` / `log_seasonal_ratio`: consumption vs. the median of the same hour over the previous 7 days
+- `zscore`: robust z-score (median / MAD) against that same-hour baseline
+- Medians and MAD are used instead of means and standard deviations so that a few days of theft cannot drag the baseline down and make persistent theft look normal.
 
-Returns only abnormal electricity usage entries.
+**Model.** Isolation Forest (unsupervised; labels are never used for training). It is compared with Local Outlier Factor, One-Class SVM, Elliptic Envelope and a plain robust z-score threshold rule.
 
-4. Real-time Prediction
-POST /predict
-Input:
-{
-  "consumption": 15.0,
-  "voltage": 220.0
-}
-Output:
-{
-  "consumption": 15.0,
-  "voltage": 220.0,
-  "prediction": -1,
-  "is_fraud": true
-}
-Frontend (Streamlit Dashboard)
-Features:
-Displays full electricity dataset
-Shows detected fraud cases
-Allows real-time fraud prediction
-User Interaction:
-Enter consumption value
-Enter voltage value
-Click “Run Detection”
-View prediction result instantly
- Data Flow
-SQL Database
-   ↓
-FastAPI (/detect, /fraud-cases, /predict)
-   ↓
-ML Model (Isolation Forest)
-   ↓
-Streamlit Dashboard
-Where does the data come from?
-Current Setup:
-Data is synthetically generated inside Python
-It simulates real electricity usage patterns
-Why synthetic data?
-Real utility data is not publicly available
-Allows controlled testing of fraud scenarios
+## Evaluation
 
-If we'd want to replace synthetic data:
+Run with `python -m model.evaluate`. Detectors are trained without labels on the first 70% of the timeline and scored on the last 30% (time-based split). Labels are used only to measure the result.
 
-Step 1: Replace database insertion logic
+Held-out results (seed 42; test set is 3.9% theft, so a random scorer has PR-AUC of about 0.04):
 
-Instead of random generation, insert CSV data:
+| Model | Precision | Recall | F1 | ROC-AUC | PR-AUC |
+|---|---|---|---|---|---|
+| **Isolation Forest** | 0.941 | 0.565 | 0.706 | 0.982 | 0.782 |
+| Local Outlier Factor | 0.177 | 0.259 | 0.211 | 0.622 | 0.101 |
+| One-Class SVM | 0.512 | 0.518 | 0.515 | 0.569 | 0.524 |
+| Elliptic Envelope | 0.703 | 0.529 | 0.604 | 0.973 | 0.706 |
+| Z-score rule (baseline) | 0.316 | 0.882 | 0.466 | 0.977 | 0.758 |
 
-df = pd.read_csv("your_data.csv")
-df.to_sql("electricity_usage", conn, if_exists="replace")
- Real-World Applications
+Across 5 independently simulated datasets (mean +/- std): Isolation Forest ROC-AUC 0.970 +/- 0.019 and PR-AUC 0.792 +/- 0.112; Elliptic Envelope is statistically tied (0.969 / 0.784); the z-score rule reaches 0.924 / 0.674. Full tables, including contamination sensitivity and recall by theft type, are in `model/results/comparison.md`.
 
-This system can be used in:
-Power Distribution Companies
-Detect electricity theft
-Monitor abnormal usage
+### What the experiments showed
+- **Feature engineering mattered more than model choice.** With raw consumption and voltage as inputs, a plain z-score rule beat every ML model. Feature selection (dropping noisy raw features, log-transforming ratios) was done on separate development seeds (100-104), not on the seeds reported above.
+- **The decision threshold matters.** Isolation Forest's `contamination` sets the operating point: at 0.05 precision is 0.94 and recall 0.57; at 0.10 recall rises to 0.91 and precision drops to 0.37. The right value depends on the cost of a missed theft versus a wasted inspection.
+- **Known weakness: meter bypass.** Isolation Forest catches all surges and stalls but none of the bypass episodes in the seed-42 test set at the default threshold (the z-score rule catches 73%, at low precision). A partial reduction sits in the middle of the distribution, which is exactly where isolation-based methods are weakest.
 
-Industrial Monitoring
-Detect equipment failures via power anomalies
+## API
 
-Smart Grids
-Real-time monitoring of city electricity consumption
+| Endpoint | Description |
+|---|---|
+| `GET /` | health check |
+| `GET /detect?meter_id=&limit=` | readings with anomaly label (`-1` anomaly, `1` normal) and score |
+| `GET /fraud-cases?meter_id=&limit=` | only flagged readings, most suspicious first |
+| `GET /meters` | per-meter flag rates |
+| `POST /predict` | score a reading; pass `meter_id` to score against that meter's history |
+| `GET /metrics` | hold-out evaluation results |
 
-Revenue Protection
-Reduce financial loss due to unauthorized usage
+```json
+POST /predict   {"consumption": 0.0, "voltage": 230, "meter_id": "M03"}
+->              {"prediction": -1, "is_fraud": true, "anomaly_score": 0.741, "context": "history", ...}
+```
 
-Key Features
+Interactive docs at `http://127.0.0.1:8000/docs`. Invalid bodies return 422, unknown meters 404.
 
-✔ Full-stack ML system
-✔ Real-time anomaly detection
-✔ REST API architecture
-✔ Interactive dashboard
-✔ SQL-based data storage
-✔ Extensible to real datasets
+## Project structure
 
- How to Run the Project
-1. Start Backend
-uvicorn backend.main:app --reload
-2. Run Streamlit App
-streamlit run frontend/app.py
-3. Access:
-API: http://127.0.0.1:8000/docs
-Dashboard: Streamlit UI
+```
+backend/    main.py (routes), services.py (FraudDetector), schemas.py (Pydantic models)
+database/   schema.sql, db.py, init_db.py (simulator)
+model/      features.py, models.py, train.py, evaluate.py, config.py, results/
+frontend/   app.py (Streamlit)
+tests/      feature/leakage, data generation, evaluation metrics, API
+```
 
+Training and serving share `build_features`, so there is no training/serving skew.
 
-Limitations
-Uses synthetic dataset (not real utility data)
-Model is unsupervised (no labeled fraud ground truth)
-Designed for learning + prototype level systems
+## Run it
 
-Future Improvements
-Use real smart meter datasets
-Add deep learning anomaly detection
-Deploy using Docker + cloud
-Add authentication system
+```bash
+pip install -r requirements.txt        # requirements-dev.txt adds pytest
+python -m database.init_db             # simulate data (seeded, reproducible)
+python -m model.train                  # fit and save model/model.pkl
+python -m model.evaluate               # write model/results/
+uvicorn backend.main:app --reload      # API on :8000
+streamlit run frontend/app.py          # dashboard
+python -m pytest                       # tests
+```
 
-Final Note
+### Docker
 
-This project demonstrates how machine learning moves from:
+```bash
+docker compose up --build   # API on :8000, dashboard on :8501
+```
 
-“model training” → “real-world system deployment”
+The image simulates data and trains the model at build time, so the saved model always matches the installed scikit-learn. GitHub Actions (`.github/workflows/ci.yml`) runs the tests and builds the image on every push.
 
-It bridges the gap between:
+Run the modules with `python -m` from the project root, otherwise the package imports fail.
 
-Data science
-Backend engineering
-Product-level thinking
+## Limitations
+
+- Simulated data only; the simulator's theft patterns are simpler than real theft.
+- One evaluation dataset plus 5 repeats: numbers carry sampling noise (see the +/- above).
+- The model is trained on the whole history and loaded once at API start; retraining needs a restart.
+- No authentication, and SQLite is not suited to concurrent, high-volume ingestion.
+- Anomalies are not proof of theft: legitimate causes (new appliances, vacancies) look similar. The output is a shortlist for inspection.
+
+## Next steps
+
+Validate on a real dataset (e.g. the SGCC theft dataset), add weather and holiday features, retrain on a schedule with drift monitoring, and move storage to PostgreSQL/TimescaleDB.

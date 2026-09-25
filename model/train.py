@@ -1,58 +1,52 @@
-import pandas as pd
+import argparse
+import os
+from datetime import datetime, timezone
+
 import joblib
-from sklearn.ensemble import IsolationForest
-from database.db import get_connection
+import sklearn
+
+from database.db import get_connection, load_usage
+from model.config import CONTAMINATION, DEPLOYED_MODEL, MODEL_PATH, RANDOM_STATE
+from model.features import FEATURE_COLUMNS, build_features
+from model.models import make_models
 
 
-MODEL_PATH = "model/model.pkl"
-
-
-def load_data():
-    conn = get_connection()
-    df = pd.read_sql_query("SELECT * FROM electricity_usage", conn)
-    conn.close()
-    return df
-df = load_data()
-print("Rows:", len(df))
-print(df.head())
-
-
-def engineer_features(df):
+def train(db_path=None, model_path=MODEL_PATH, model_name=DEPLOYED_MODEL, contamination=CONTAMINATION):
     """
-    Add simple but meaningful features.
-    This is where you show thinking.
+    Fit the chosen detector on ALL available readings (unsupervised: labels are
+    never used) and save it with the metadata needed to serve it safely.
+    Honest performance numbers come from model/evaluate.py (time-based hold-out).
     """
+    conn = get_connection(db_path)
+    try:
+        df = load_usage(conn)
+    finally:
+        conn.close()
 
-    df = df.sort_values(by=["meter_id", "timestamp"])
-
-    # Rolling average (per meter)
-    df["rolling_avg"] = df.groupby("meter_id")["consumption"].transform(
-        lambda x: x.rolling(window=5, min_periods=1).mean()
-    )
-
-    # Spike ratio
-    df["spike_ratio"] = df["consumption"] / df["rolling_avg"]
-
-    return df
-
-
-def train():
-    df = load_data()
-    df = engineer_features(df)
-
-    features = df[["consumption", "voltage", "spike_ratio"]].fillna(0)
-
-    model = IsolationForest(
-        contamination=0.1,
-        random_state=42
-    )
-
+    features = build_features(df)[FEATURE_COLUMNS]
+    model = make_models(contamination, RANDOM_STATE)[model_name]
     model.fit(features)
 
-    joblib.dump(model, MODEL_PATH)
-
-    print("✅ Model trained and saved at:", MODEL_PATH)
+    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+    joblib.dump(
+        {
+            "model": model,
+            "model_name": model_name,
+            "features": FEATURE_COLUMNS,
+            "contamination": contamination,
+            "sklearn_version": sklearn.__version__,
+            "trained_at": datetime.now(timezone.utc).isoformat(),
+            "train_rows": len(features),
+        },
+        model_path,
+    )
+    print(f"Trained {model_name} on {len(features)} readings -> {model_path}")
+    return model
 
 
 if __name__ == "__main__":
-    train()
+    parser = argparse.ArgumentParser(description="Train and save the fraud detector.")
+    parser.add_argument("--model", default=DEPLOYED_MODEL, choices=list(make_models()))
+    parser.add_argument("--contamination", type=float, default=CONTAMINATION)
+    args = parser.parse_args()
+    train(model_name=args.model, contamination=args.contamination)
